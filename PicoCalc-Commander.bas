@@ -1,6 +1,9 @@
-'----------------------------
+'----------------------------1
 ' PicoCalc - Commander
 '----------------------------
+'Code base: Questarians Utility library'
+' https://forum.clockworkpi.com/t/building-an-mmbasic-utility-library/18496'
+
 Clear
 Option BASE 1
 Option EXPLICIT
@@ -15,7 +18,12 @@ Dim red   = RGB(255, 0, 0)
 Dim lightgray = RGB(200, 200, 200)
 Dim darkgray  = RGB(64, 64, 64)
 Dim yellow = RGB(255, 255, 0)
-Dim copyFile$, copySource$, markMsg$ 
+Dim copyFile$, copySource$
+Dim currentPath$ = "B:/"
+Dim fname$(128)
+Dim currentExt$ = "BAS"
+Dim copyMode$
+Dim prefix$
 
 ' === Start Commander ===
 StartCommander
@@ -31,7 +39,6 @@ Sub StartCommander
     restart = 0
     CLS bluebg
 
-    ' Header
     Box 0, 0, MM.HRES, fonth + 20, , lightgray, darkgray
     Font 3
     fontw = MM.FONTWIDTH
@@ -42,30 +49,30 @@ Sub StartCommander
     Colour red, darkgray
     Print @(hx, hy) headline$
 
-    ' Footer
     Font 7
     fontw = MM.FONTWIDTH
     fonth = MM.FONTHEIGHT
-    helptext$ = "F1=Help  ESC=Quit  N=NewFolder  X=Cut  V=Paste"
+    helptext$ = "F1=Help    ESC=Quit"
     helpx = (MM.HRES - Len(helptext$) * fontw) / 2
     helpy = MM.VRES - 2 * fonth
     Colour white, bluebg
     Print @(helpx, helpy) helptext$
 
-    ' Reset font
     Font 1
     fontw = MM.FONTWIDTH
     fonth = MM.FONTHEIGHT
     Colour white, black
 
-    ' Aufruf des Browsers
-    a$ = dirwin$(x, y, lines, "B:/", "BAS")
+    a$ = dirwin$(x, y, lines, currentPath$, currentExt$)
+    If currentExt$ <> "*" And currentExt$ <> "BAS" Then currentExt$ = "BAS"
+    
 
     Select Case a$
       Case "SHOWHELP"
         ShowHelpScreen
         restart = 1
-      Case "RESTART"
+           If currentExt$ <> "*" And currentExt$ <> "BAS" Then currentExt$ = "BAS"     
+          Case "RESTART"
         restart = 1
       Case ""            
         restart = 1
@@ -77,15 +84,14 @@ Sub StartCommander
           End If
         End If
     End Select
-
   Loop While restart = 1
 End Sub
 
-=== Subroutine: Help Display ===
+'=== Subroutine: Help Display ===
 Sub ShowHelpScreen
   CLS bluebg
   Colour white, bluebg
-  Local txt$(10), j
+  Local txt$(15), j
   txt$(1)  = "  KEY OVERVIEW"
   txt$(2)  = ""
   txt$(3)  = "  up/down   Move cursor"
@@ -94,24 +100,109 @@ Sub ShowHelpScreen
   txt$(6)  = "  F1        Show this help"
   txt$(7)  = "  N         Create folder"
   txt$(8)  = "  DEL       Delete file/folder"
-  txt$(9)  = "  X         Mark file for copy"
-  txt$(10) = "  V         Paste into folder"
-  For j = 1 To 10
+  txt$(9)  = "  C         Copy file"
+  txt$(10)  = "  X         Cut file"
+  txt$(11) = "  V         Paste into folder"
+  txt$(12) = "  R         Rename Folder"
+  txt$(13) = "  F         Filter all/.bas"
+  txt$(14) = "  "
+  txt$(15) = "  Version   0.14 "
+  
+  For j = 1 To 15
     Print @(4, j * fonth + 10) txt$(j)
   Next j
   Do : Loop Until Inkey$ <> ""
   CLS bluebg
+  If currentExt$ = "" Then currentExt$ = "BAS"
 End Sub
 
-' === Funktion: Verzeichnis + X/V-Logik ===
+ Sub DeleteFolderRecursive(folder$)
+  Local f$, full$, d$(100), i%, count%
+
+  ' Sicherheitsprüfung: nicht aktuelles Verzeichnis löschen
+  If UCase$(folder$) = UCase$(Cwd$) Then
+    Print "Cannot delete current directory!"
+    Exit Sub
+  End If
+
+  ' Trailing Slash entfernen
+  If Right$(folder$, 1) = "/" Then folder$ = Left$(folder$, Len(folder$) - 1)
+
+
+  f$ = Dir$(folder$ + "/*", FILE)
+  Do While f$ <> ""
+    full$ = folder$ + "/" + f$
+    On Error Ignore
+    Kill full$
+    On Error Abort
+    f$ = Dir$()
+  Loop
+
+  count% = 0
+  f$ = Dir$(folder$ + "/*", DIR)
+  Do While f$ <> ""
+    If f$ <> "." And f$ <> ".." Then
+      count% = count% + 1
+      d$(count%) = folder$ + "/" + f$
+    End If
+    f$ = Dir$()
+  Loop
+
+
+  For i% = 1 To count%
+    DeleteFolderRecursive d$(i%)
+  Next i%
+
+  On Error Ignore
+  Rmdir folder$
+  On Error Abort
+End Sub
+
+Sub ShowBMP(filename$)
+  CLS
+  If Dir$(filename$, FILE) <> "" Then
+    Load Image filename$, 0, 0
+    Do : Loop Until Inkey$ <> ""
+  Else
+    Colour red, black
+    Print "Not a valid BMP file!"
+    Pause 1000
+  End If
+  CLS
+End Sub
+
+Sub ShowTextFile(filename$)
+  Local line$, i, txt$(20)
+  Local f%
+
+  CLS black
+  Colour white, black
+
+  Open filename$ For Input As #1
+  i = 1
+  Do While Not EOF(1) And i <= 20
+    Line Input #1, line$
+    txt$(i) = Left$(line$, 38) ' max. Zeichen pro Zeile
+    i = i + 1
+  Loop
+  Close #1
+
+  For f% = 1 To i - 1
+    Print @(4, f% * fonth + 10) txt$(f%)
+  Next f%
+
+  Do : Loop Until Inkey$ <> ""
+  CLS bluebg
+End Sub
+
 Function dirwin$(x, y, lines, path$, ext$)
   Const winw = 39
-  Local fname$(128)
+  
   Local i, file$, p$, fcount, top, bottom
   Local ftop, x2, y2, y3, y4
   Local cursor, cmode, endstate
   Local a$, o$, delname$, confirm$, newdir$
-  Local k$, code%, ch$, src$, dst$, Line$
+  Local k$, code%, ch$, src$, dst$, line$, renameSrc$, renameDst$, renameBuf$
 
   dirwin$  = "RESTART"
   endstate = 1
@@ -121,11 +212,11 @@ Function dirwin$(x, y, lines, path$, ext$)
   y3 = y + 2
   y4 = y2 + 3
 
-  If ext$ = "" Then
-    ext$ = "*"
-  Else
-    ext$ = "*." + UCase$(ext$)
-  End If
+If ext$ = "" Or ext$ = "*" Then
+  ext$ = "*"
+Else
+  ext$ = "*." + UCase$(ext$)
+End If
 
   If path$ <> "" Then
     p$ = path$
@@ -141,7 +232,6 @@ Function dirwin$(x, y, lines, path$, ext$)
   End If
 
   Do
-    ' Read directory contents
     If endstate = 1 Then
       fcount = 0 : cursor = 1 : ftop = 1
       If Len(p$) > 3 Then
@@ -167,13 +257,16 @@ Function dirwin$(x, y, lines, path$, ext$)
       Loop
     End If
 
-    ' Display path
+    If Left$(p$,2) = "A:" Then
+      prefix$ = Chr$(168) + " "
+    ElseIf Left$(p$,2) = "B:" Then
+      prefix$ = Chr$(153) + " "
+    Else
+      prefix$ = ""
+    End If
+    Colour white, darkgray
+    Print @(x2, y3) Left$(prefix$ + p$ + Space$(winw), winw)
 
-  Colour white, RGB(50,50,50)
-  Print @(x2, y3) Left$(p$ + Space$(winw), winw)
-
-
-    ' Liste anzeigen
     Colour white, black
     top    = ftop
     bottom = ftop + lines - 1
@@ -198,22 +291,18 @@ Function dirwin$(x, y, lines, path$, ext$)
       Print @(x2, y4 + (i-ftop)*fonth, cmode) file$
     Next i
 
-    ' Read key (including arrow handling)
     Do
       k$ = Inkey$
     Loop Until k$ <> ""
     If k$ = Chr$(0) Then
-      Do
-        k$ = Inkey$
-      Loop Until k$ <> ""
+      Do : k$ = Inkey$ : Loop Until k$ <> ""
     End If
     code%    = Asc(k$)
     ch$      = k$
     endstate = 0
 
-   ' Special keys
     Select Case code%
-      Case 128  ' ↑
+      Case 128
         If cursor > 1 Then
           cursor = cursor - 1
           endstate = 2
@@ -221,8 +310,8 @@ Function dirwin$(x, y, lines, path$, ext$)
           ftop = ftop - 1
           endstate = 3
         End If
-
-      Case 129  ' ↓
+        
+      Case 129
         If (cursor + ftop - 1) < fcount Then
           If cursor < lines Then
             cursor = cursor + 1
@@ -232,75 +321,117 @@ Function dirwin$(x, y, lines, path$, ext$)
             endstate = 2
           End If
         End If
-
-      Case 13   ' ENTER
-        a$ = fname$(cursor+ftop-1)
-        o$ = Mid$(a$,2)
-        If Left$(a$,1) = "1" Then
-          endstate = 1
-          If o$ = ".." Then
-            On Error Skip
-            Chdir ".."
-            p$ = Cwd$
-          Else
-            If Right$(p$,1) <> "/" Then p$ = p$ + "/"
-            p$ = p$ + o$
-            On Error Skip
-            Chdir p$
-            If MM.Errno Then Exit Function
-          End If
-        Else
-          dirwin$ = p$ + "$" + o$
-          Exit Function
-        End If
-
-      Case 27   ' ESC
+        
+Case 13
+  a$ = fname$(cursor + ftop - 1)
+  o$ = Mid$(a$, 2)
+  If Left$(a$,1) = "1" Then
+    ' Ordner öffnen
+    endstate = 1
+    If o$ = ".." Then
+      On Error Skip
+      Chdir ".."
+      p$ = Cwd$
+      currentPath$ = p$
+    Else
+      If Right$(p$,1) <> "/" Then p$ = p$ + "/"
+      p$ = p$ + o$
+      On Error Skip
+      Chdir p$
+      currentPath$ = p$
+      If MM.Errno Then Exit Function
+    End If
+  Else
+    If UCase$(Right$(o$, 4)) = ".BMP" Then
+      ShowBMP o$
+      Exit Function
+    ElseIf UCase$(Right$(o$, 4)) = ".WAV" Then
+      Play WAV o$
+      Do : Loop Until Inkey$ <> ""
+      Exit Function
+    ElseIf UCase$(Right$(o$, 4)) = ".TXT" Then
+      ShowTextFile o$
+      Exit Function
+    ElseIf UCase$(Right$(o$, 4)) = ".BAS" Then
+      dirwin$ = p$ + "$" + o$
+      currentPath$ = p$
+      Exit Function
+    End If
+  End If
+        
+      Case 27
         CLS
         dirwin$ = "QUIT"
         Exit Function
-
-      Case 127  ' DEL
+        
+      Case 127
         delname$ = Mid$(fname$(cursor+ftop-1),2)
         Colour white, red
         Print @(x2, y3) "Delete? Y/N"
-        Do
-          confirm$ = Inkey$
-        Loop Until confirm$ <> ""
-        If UCase$(confirm$) = "Y" Then Kill delname$
+        Do : confirm$ = Inkey$ : Loop Until confirm$ <> ""
+        If UCase$(confirm$) = "Y" Then
+          If Left$(fname$(cursor+ftop-1),1) = "1" Then
+            ' Ordner löschen (rekursiv)
+            DeleteFolderRecursive delname$
+          Else
+            ' Datei löschen
+            Kill delname$
+          End If
+        End If
+        currentPath$ = p$
         dirwin$ = "RESTART"
         Exit Function
-
-
-
-      Case 145  ' F1
+        
+Case 145  ' F1
         dirwin$ = "SHOWHELP"
         Exit Function
     End Select
 
     Select Case UCase$(ch$)
-    
-          Case "N"  
+      Case "N"
         newdir$ = ""
-        Colour white, RGB(50,50,50)
+        Colour white, darkgray
         Print @(x2, y3) "New folder: ";
         Input newdir$
         If newdir$ <> "" Then Mkdir newdir$
+        currentPath$ = p$
         dirwin$ = "RESTART"
         Exit Function
-    
+
       Case "D"
         If Left$(p$,1) = "A" Then Drive "B:" Else Drive "A:"
         p$ = Cwd$
         endstate = 1
 
+          Case "C"
+        If Left$(fname$(cursor+ftop-1),1) = "1" Then
+          Colour red, darkgray
+          Print @(x2, y3) "Cannot copy a folder!"
+          Do : k$ = Inkey$ : Loop Until k$ <> ""
+          endstate = 1
+        Else
+          copyFile$   = Mid$(fname$(cursor+ftop-1),2)
+          copySource$ = p$
+          copyMode$   = "COPY"
+          Colour yellow, darkgray
+          Print @(x2, y3) "copy file: " + copyFile$
+          Do : k$ = Inkey$ : Loop Until k$ <> ""
+        End If
+        
       Case "X"
-        copyFile$   = Mid$(fname$(cursor+ftop-1),2)
-        copySource$ = p$
-        Colour yellow, darkgray
-        Print @(x2, y3) "Marked: " + copyFile$, "V for insert"
-          Do
-    k$ = Inkey$
-  Loop Until k$ <> ""
+        If Left$(fname$(cursor+ftop-1),1) = "1" Then
+          Colour red, darkgray
+          Print @(x2, y3) "Cannot cut a folder!"
+          Do : k$ = Inkey$ : Loop Until k$ <> ""
+          endstate = 1
+        Else
+          copyFile$   = Mid$(fname$(cursor+ftop-1),2)
+          copySource$ = p$
+          copyMode$   = "CUT"
+          Colour yellow, darkgray
+          Print @(x2, y3) "cut file: " + copyFile$
+          Do : k$ = Inkey$ : Loop Until k$ <> ""
+        End If
 
       Case "V"
         If copyFile$ <> "" Then
@@ -315,20 +446,48 @@ Function dirwin$(x, y, lines, path$, ext$)
               Line Input #1, line$
               Print #2, line$
             Loop
-            Close #1
-            Close #2
-            Kill src$
+            Close #1 : Close #2
+            If copyMode$ = "CUT" Then Kill src$
           End If
         End If
-        copyFile$   = ""
-        copySource$ = ""
-        
-        endstate = 1
-        'dirwin$     = "RESTART"
-        'Exit Function
-    End Select
+        copyFile$ = "" : copySource$ = "" : copyMode$ = "" : endstate = 1
 
+      Case "R"
+        renameSrc$ = Mid$(fname$(cursor + ftop - 1), 2)
+        If Right$(p$,1) <> "/" Then p$ = p$ + "/"
+        Colour white, darkgray
+        Print @(x2, y3) "New name:";
+        Input renameDst$, x2 + 80, y3
+        renameDst$ = p$ + renameDst$
+        If renameDst$ <> "" Then
+          If Dir$(renameSrc$) <> "" Then
+            Open renameSrc$ For Input As #1
+            Open renameDst$ For Output As #2
+            Do While Not EOF(1)
+              Line Input #1, renameBuf$
+              Print #2, renameBuf$
+            Loop
+            Close #1 : Close #2 : Kill renameSrc$
+          EndIf
+        EndIf
+        dirwin$ = "RESTART"
+        currentPath$ = p$
+        Exit Function
+    
+    
+Case "F"
+  If currentExt$ = "*" Then
+    currentExt$ = "BAS"
+  Else
+    currentExt$ = "*"
+  End If
+  currentPath$ = p$
+  dirwin$ = "RESTART"
+  Exit Function
+
+End Select
   Loop
-  ' Fallback 
   dirwin$ = "RESTART"
 End Function
+
+
