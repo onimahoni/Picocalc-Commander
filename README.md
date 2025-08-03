@@ -1,8 +1,7 @@
-'----------------------------1
-' PicoCalc - Commander
-'----------------------------
-'Code base: Questarians Utility library'
-' https://forum.clockworkpi.com/t/building-an-mmbasic-utility-library/18496'
+PicoCalc - Commander
+
+Code base: Questarians Utility library
+https://forum.clockworkpi.com/t/building-an-mmbasic-utility-library/18496
 
 simple Filemanager / Launcher
 
